@@ -38,7 +38,7 @@ class http_conn{
     private:
         void init();
 
-        HTTP_CODE procee_read();
+        HTTP_CODE process_read();
 
         bool process_write( HTTP_CODE ret );
 
