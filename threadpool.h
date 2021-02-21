@@ -10,7 +10,7 @@
 template < typename T >
 class threadpool{
     public:
-        threadpool( int thread_number = 8, int max_requests = 10000 );
+        threadpool( int thread_number = 20, int max_requests = 10000 );
         ~threadpool();
         bool append( T *request );
     private:

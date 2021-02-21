@@ -16,7 +16,7 @@ class http_conn{
     /*服务器处理http请求的可能结果*/
     enum HTTP_CODE { NO_REQUEST, GET_REQUEST, BAD_REQUEST,
                     NO_RESOURCE, FORBIDDEN_REQUEST, FILE_REQUEST,
-                    INTERNAL_ERROR, CLOSED_CONNECTION };
+                    INTERNAL_ERROR, CLOSED_CONNECTION, DIR_REQUEST };
     /*行的读取状态*/
     enum LINE_STATUS { LINE_OK = 0, LINE_BAD, LINE_OPEN };
     
@@ -50,13 +50,14 @@ class http_conn{
         LINE_STATUS parse_line();
 
         void unmap();
-        bool add_response( const char* format,... );
+        bool add_response( char *buffer, int &idx, const char* format,... );
         bool add_content( const char* content );
         bool add_status_line( int status, const char* title );
         bool add_headers( int content_length );
         bool add_content_length( int content_length );
         bool add_linger();
         bool add_blank_line();
+        bool add_dir( char *path );
 
     public:
         static int m_epollfd;
@@ -103,10 +104,14 @@ class http_conn{
         struct iovec m_iv[ 2 ];
         //内存块数量
         int m_iv_count;
-
-        char s[25];
-
-        int s_len;
+        //文件的缓存区
+        char m_file_buffer[ WRITE_BUFFER_SIZE ];
+        //传输文件大小
+        int m_file_idx;
+        //要写入的字节数
+        int bytes_to_send;
+        //已经写入的字节
+        int bytes_have_send;
 };
 #endif
 
