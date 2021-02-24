@@ -1,7 +1,7 @@
 #include "http_conn.h"
 #include "threadpool.h"
 #include "lock.h"
-
+#include "mysql.h"
 #define MAX_FD 65536
 #define MAX_EVENT_NUMBER 20
 extern int addfd( int epollfd, int fd, bool one_shot );
@@ -32,6 +32,7 @@ int main( int argc, char *argv[] ){
     }catch(...){
         return 1;
     }
+    connect_pool mysql_pool = connect_pool( "localhost", "root", "jhy,.jht666", "user", 3306, 20 );
 
     http_conn *users = new http_conn[ MAX_FD ];
     assert( users );

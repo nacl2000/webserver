@@ -1,10 +1,9 @@
 #ifndef HTTPCONNECTION_H
 #define HTTPCONNECTION_H
 
-#include "server.h"
 #include <cstdio>
 #include <sys/uio.h>
-#include "lock.h"
+#include "mysql.h"
 class http_conn{
     static const int FILENAME_LEN = 200;
     static const int READ_BUFFER_SIZE = 2048;
@@ -112,6 +111,10 @@ class http_conn{
         int bytes_to_send;
         //已经写入的字节
         int bytes_have_send;
+        
+        char user_name[20];
+
+        char user_password[20];
 };
 #endif
 

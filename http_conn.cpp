@@ -1,6 +1,6 @@
 #include "http_conn.h"
-#include "http_conn.h"
 #include <dirent.h>
+#include <string>
 //定义http响应的一些状态信息
 const char *ok_200_title = "OK";
 const char *error_400_title = "Bad Request";
@@ -265,6 +265,24 @@ http_conn::HTTP_CODE http_conn::parse_content(char *text)
 {
     if (m_read_idx >= (m_content_length + m_checked_idx))
     {
+        //puts( text );
+        int i;
+        for( i = 0;; ++i){
+            if( text[ i ] == '&' ){
+                user_name[ i ] = '\0';
+                ++i;
+                break;
+            }
+            user_name[ i ] = text[ i ];
+        }
+
+        for( int j = 0;;++j,++i ){
+            if( text[ i ] == '\0' ){
+                user_password[ j ] = '\0';
+                break;
+            }
+            user_password[ j ] = text[ i ];
+        }
         text[m_content_length] = '\0';
         return GET_REQUEST;
     }
@@ -319,10 +337,76 @@ http_conn::HTTP_CODE http_conn::process_read()
 }
 
 http_conn::HTTP_CODE http_conn::do_request()
-{
+{  
+    puts( m_url );
+    if( strlen( m_url ) == 1 && m_url[ 0 ] == '/' ){
+        strcpy( m_real_file, "./files/init.html" );
+        if( stat( m_real_file, &m_file_stat ) < 0 ){
+            return NO_RESOURCE;
+        }
+        int fd = open("./files/init.html", O_RDONLY);
+        m_file_address = (char *)mmap(0, m_file_stat.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+        close(fd);
+        return FILE_REQUEST;
+    }
+    if( m_method == POST ){
+        MYSQL *con = connect_pool::get_connection();
+        switch( m_url[ 1 ] ){
+            case '1':
+                {
+                    //puts( user_name );
+                    //puts( user_password );
+                    char tmp[100];
+                    int tmp_idx = 0;
+                    if( !add_response( tmp, tmp_idx, "SELECT password FROM user where name = '%s';",user_name ) ){
+                        strcpy( m_url, "/enter_error.html" );
+                    }else{
+                        mysql_query( con, tmp );
+                        MYSQL_RES *result = mysql_store_result( con );
+                        MYSQL_ROW row = mysql_fetch_row( result );
+                        if( row[ 0 ] == NULL || strcmp( user_name, std::string( row[ 0 ] ).c_str() ) != 0 ){
+                            strcpy( m_url, " /enter_error.html" );
+                        }else{
+                            strcpy( m_url, "/" );
+                        }
+                    }
+                    break;
+                }
+            case '0':
+                {
+                    //puts( user_name );
+                    //puts( user_password );
+                    char tmp[100];
+                    int tmp_idx = 0;
+                    connect_pool::table_lock.lock();
+                    if( !add_response( tmp, tmp_idx, "insert into user(name,password) values('%s','%s');"
+                                                            ,user_name, user_password ) ){
+                        strcpy( m_url, "/register_error.html" );
+                    }else{
+                        if( 0==mysql_query( con, tmp ) ){
+                            strcpy( m_url, " /init.html" );
+                        }else{
+                            strcpy( m_url, "/register_error.html" );
+                        }
+                    }
+                    connect_pool::table_lock.unlock();
+                    break;
+                }
+            case '2':
+                {
+                    strcpy( m_url,"/register.html" );
+                    break;
+                }
+            default:
+                {
+                    break;
+                }
+        }
+        connect_pool::release_connection( con );
+    }
     strcpy(m_real_file, doc_root);
     int len = strlen(doc_root);
-    strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
+    strncpy( m_real_file + len, m_url, FILENAME_LEN -len -1 );
 
     if (stat(m_real_file, &m_file_stat) < 0)
         return NO_RESOURCE;
