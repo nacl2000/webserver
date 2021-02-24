@@ -1,27 +1,31 @@
 #ifndef _CONNECTION_POOL_
 #define _CONNECTION_POOL_
 
+#include <stdio.h>
 #include <list>
-#include "server.h"
-#include "lock.h"
 #include <mysql/mysql.h>
-
-class connect_pool{
+#include <error.h>
+#include <string.h>
+#include <iostream>
+#include <string>
+#include "lock.h"
+#include <pthread.h>
+class mysql_pool{
     public:
-        connect_pool( const char *url, const char *user, const char *password, 
+        mysql_pool(){}
+        ~mysql_pool(){}
+        void init( const char *url, const char *user, const char *password, 
                         const char *dbname, const int port, const int max_conn );
-        ~connect_pool();
-        static MYSQL *get_connection();
-        static void release_connection(MYSQL *_sql);
-        static locker table_lock;
-        static locker lock;
-        static sem sum;
-        static std::list<MYSQL*> connList;
-    
+        void destory_pool();
+        MYSQL *get_connection();
+        locker table_lock;
+        void release_connection(MYSQL *_sql);
     private:
-        static int m_max_conn;
+        locker sql_lock;
+        sem sum;
+        std::list<MYSQL*> connList;    
+        int m_max_conn;
         //static int m_curconn;
-        static int m_free_conn;
+        int m_free_conn;
 };
-
 #endif

@@ -1,8 +1,28 @@
 #ifndef HTTPCONNECTION_H
 #define HTTPCONNECTION_H
 
-#include <cstdio>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/epoll.h>
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <assert.h>
+#include <sys/stat.h>
+#include <string.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/mman.h>
+#include <stdarg.h>
+#include <errno.h>
+#include <sys/wait.h>
 #include <sys/uio.h>
+#include <map>
+
+#include "lock.h"
 #include "mysql.h"
 class http_conn{
     static const int FILENAME_LEN = 200;
@@ -24,7 +44,7 @@ class http_conn{
         ~http_conn(){}
 
     public:
-        void init( int sockfd, const sockaddr_in& addr );
+        void init( int sockfd, const sockaddr_in& addr, mysql_pool *sql_pool );
 
         void close_conn( bool real_close = true );
 
@@ -62,6 +82,8 @@ class http_conn{
         static int m_epollfd;
 
         static int m_user_count;
+
+        mysql_pool *connect_pool;
 
     private:
         int m_sockfd;

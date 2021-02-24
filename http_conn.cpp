@@ -67,11 +67,11 @@ void http_conn::close_conn(bool real_close)
 }
 
 //初始化连接,外部调用初始化套接字地址
-void http_conn::init(int sockfd, const sockaddr_in &addr)
+void http_conn::init(int sockfd, const sockaddr_in &addr, mysql_pool *sql_pool)
 {
     m_sockfd = sockfd;
     m_address = addr;
-    
+    connect_pool = sql_pool;
     int reuse = 1;
     setsockopt( m_sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof( reuse ) );
     addfd( m_epollfd, sockfd, true );
@@ -267,15 +267,14 @@ http_conn::HTTP_CODE http_conn::parse_content(char *text)
     {
         //puts( text );
         int i;
-        for( i = 0;; ++i){
+        for( i = 5;; ++i){
             if( text[ i ] == '&' ){
                 user_name[ i ] = '\0';
-                ++i;
                 break;
             }
-            user_name[ i ] = text[ i ];
+            user_name[ i-5 ] = text[ i ];
         }
-
+        i+=10;
         for( int j = 0;;++j,++i ){
             if( text[ i ] == '\0' ){
                 user_password[ j ] = '\0';
@@ -338,7 +337,6 @@ http_conn::HTTP_CODE http_conn::process_read()
 
 http_conn::HTTP_CODE http_conn::do_request()
 {  
-    puts( m_url );
     if( strlen( m_url ) == 1 && m_url[ 0 ] == '/' ){
         strcpy( m_real_file, "./files/init.html" );
         if( stat( m_real_file, &m_file_stat ) < 0 ){
@@ -350,22 +348,24 @@ http_conn::HTTP_CODE http_conn::do_request()
         return FILE_REQUEST;
     }
     if( m_method == POST ){
-        MYSQL *con = connect_pool::get_connection();
+        MYSQL *con = connect_pool->get_connection();
         switch( m_url[ 1 ] ){
             case '1':
                 {
-                    //puts( user_name );
-                    //puts( user_password );
+                    puts( user_name );
+                    puts( user_password );
                     char tmp[100];
                     int tmp_idx = 0;
                     if( !add_response( tmp, tmp_idx, "SELECT password FROM user where name = '%s';",user_name ) ){
                         strcpy( m_url, "/enter_error.html" );
                     }else{
+                        //puts( tmp );
+                        //printf( "tmp_idx = %d\n",tmp_idx );
                         mysql_query( con, tmp );
                         MYSQL_RES *result = mysql_store_result( con );
                         MYSQL_ROW row = mysql_fetch_row( result );
-                        if( row[ 0 ] == NULL || strcmp( user_name, std::string( row[ 0 ] ).c_str() ) != 0 ){
-                            strcpy( m_url, " /enter_error.html" );
+                        if( row == NULL || strcmp( user_password, std::string( row[ 0 ] ).c_str() ) != 0 ){
+                            strcpy( m_url, "/enter_error.html" );
                         }else{
                             strcpy( m_url, "/" );
                         }
@@ -378,18 +378,18 @@ http_conn::HTTP_CODE http_conn::do_request()
                     //puts( user_password );
                     char tmp[100];
                     int tmp_idx = 0;
-                    connect_pool::table_lock.lock();
+                    connect_pool->table_lock.lock();
                     if( !add_response( tmp, tmp_idx, "insert into user(name,password) values('%s','%s');"
                                                             ,user_name, user_password ) ){
                         strcpy( m_url, "/register_error.html" );
                     }else{
                         if( 0==mysql_query( con, tmp ) ){
-                            strcpy( m_url, " /init.html" );
+                            strcpy( m_url, "/init.html" );
                         }else{
                             strcpy( m_url, "/register_error.html" );
                         }
                     }
-                    connect_pool::table_lock.unlock();
+                    connect_pool->table_lock.unlock();
                     break;
                 }
             case '2':
@@ -402,7 +402,7 @@ http_conn::HTTP_CODE http_conn::do_request()
                     break;
                 }
         }
-        connect_pool::release_connection( con );
+        connect_pool->release_connection( con );
     }
     strcpy(m_real_file, doc_root);
     int len = strlen(doc_root);

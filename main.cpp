@@ -32,8 +32,14 @@ int main( int argc, char *argv[] ){
     }catch(...){
         return 1;
     }
-    connect_pool mysql_pool = connect_pool( "localhost", "root", "jhy,.jht666", "user", 3306, 20 );
 
+    mysql_pool *sql_pool = NULL;
+    try{
+        sql_pool = new mysql_pool();
+        sql_pool->init( "localhost", "root", "jhy,.jht666", "nacl", 3306, 20 );
+    }catch(...){
+        return 1;
+    }
     http_conn *users = new http_conn[ MAX_FD ];
     assert( users );
     int listenfd = socket( PF_INET, SOCK_STREAM, 0 );
@@ -85,7 +91,7 @@ int main( int argc, char *argv[] ){
                 char client_ip[ INET_ADDRSTRLEN ];
                 //inet_ntop( AF_INET, &client_address.sin_addr, &client_ip, INET_ADDRSTRLEN );
                 //printf( "client ip:%s port:%d\n", client_ip, ntohs(client_address.sin_port));
-                users[ connfd ].init( connfd, client_address );
+                users[ connfd ].init( connfd, client_address, sql_pool );
                 //printf( "client ip:%s port:%d\n", client_address.sin_addr, client_address.sin_port );
             }else if( events[ i ].events & ( EPOLLRDHUP | EPOLLHUP | EPOLLERR ) ){
                 if( events[ i ].events & EPOLLERR ){
@@ -119,5 +125,7 @@ int main( int argc, char *argv[] ){
     close( listenfd );
     delete [] users;
     delete pool;
+    sql_pool->destory_pool();
+    delete sql_pool;
     return 0;
 }
