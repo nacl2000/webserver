@@ -1,27 +1,89 @@
-#include <mysql/mysql.h>
-#include <stdio.h>
-#include <string>
-#include <iostream>
-int main(){
-    MYSQL sql;
-    MYSQL *con=mysql_init( &sql );
-    if( con == NULL ){
-        int ret = mysql_errno( &sql );
-        printf( "init errno is %d\n",ret );
-    }
-    if( mysql_real_connect( con, "localhost", "root", "jhy,.jht666", "nacl", 3306, NULL, 0 )==NULL){
-        int ret = mysql_errno( &sql );
-        printf( "connect errno is %d\n",ret );
-        return 0;
-    }
-    mysql_query( con, "select password from user where name='jht';" );
-    MYSQL_RES *result = mysql_store_result( con );
-    MYSQL_ROW row = mysql_fetch_row( result );
-    if( row == NULL ){
-        puts("null");
-        return 0;
-    }
-    std::cout<<std::string( row[ 0 ] )<<'\n';
-    printf( "hello\n" );
-    return 0;
-}
+#include <stdio.h> 
+#include <stdlib.h> 
+#include <stddef.h> 
+#include <stdarg.h> 
+#include <string.h> 
+#include <assert.h> 
+#include <hiredis/hiredis.h> 
+   
+void doTest() 
+{ 
+    //redis默认监听端口为6387 可以再配置文件中修改 
+    redisContext* c = redisConnect("127.0.0.1", 6379); 
+    if ( c->err) 
+    { 
+        redisFree(c); 
+        printf("Connect to redisServer faile\n"); 
+        return ; 
+    } 
+    printf("Connect to redisServer Success\n"); 
+       
+    const char* command1 = "set stest1 value1"; 
+    redisReply* r = (redisReply*)redisCommand(c, command1); 
+       
+    if( NULL == r) 
+    { 
+        printf("Execut command1 failure\n"); 
+        redisFree(c); 
+        return; 
+    } 
+    if( !(r->type == REDIS_REPLY_STATUS && strcasecmp(r->str,"OK")==0)) 
+    { 
+        printf("Failed to execute command[%s]\n",command1); 
+        freeReplyObject(r); 
+        redisFree(c); 
+        return; 
+    }    
+    freeReplyObject(r); 
+    printf("Succeed to execute command[%s]\n", command1); 
+       
+    const char* command2 = "strlen stest1"; 
+    r = (redisReply*)redisCommand(c, command2); 
+    if ( r->type != REDIS_REPLY_INTEGER) 
+    { 
+        printf("Failed to execute command[%s]\n",command2); 
+        freeReplyObject(r); 
+        redisFree(c); 
+        return; 
+    } 
+    int length =  r->integer; 
+    freeReplyObject(r); 
+    printf("The length of 'stest1' is %d.\n", length); 
+    printf("Succeed to execute command[%s]\n", command2); 
+       
+       
+    const char* command3 = "get stest1"; 
+    r = (redisReply*)redisCommand(c, command3); 
+    if ( r->type != REDIS_REPLY_STRING) 
+    { 
+        printf("Failed to execute command[%s]\n",command3); 
+        freeReplyObject(r); 
+        redisFree(c); 
+        return; 
+    } 
+    printf("The value of 'stest1' is %s\n", r->str); 
+    freeReplyObject(r); 
+    printf("Succeed to execute command[%s]\n", command3); 
+       
+    const char* command4 = "get stest2"; 
+    r = (redisReply*)redisCommand(c, command4); 
+    if ( r->type != REDIS_REPLY_NIL) 
+    { 
+        printf("Failed to execute command[%s]\n",command4); 
+        freeReplyObject(r); 
+        redisFree(c); 
+        return; 
+    } 
+    freeReplyObject(r); 
+    printf("Succeed to execute command[%s]\n", command4);    
+       
+       
+    redisFree(c); 
+       
+} 
+   
+int main() 
+{ 
+    doTest(); 
+    return 0; 
+} 

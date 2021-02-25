@@ -22,6 +22,7 @@
 #include <sys/uio.h>
 #include <map>
 
+#include "redis.h"
 #include "lock.h"
 #include "mysql.h"
 class http_conn{
@@ -44,7 +45,7 @@ class http_conn{
         ~http_conn(){}
 
     public:
-        void init( int sockfd, const sockaddr_in& addr, mysql_pool *sql_pool );
+        void init( int sockfd, const sockaddr_in& addr, mysql_pool *sql_pool, redis_pool *cookie_pool );
 
         void close_conn( bool real_close = true );
 
@@ -73,6 +74,7 @@ class http_conn{
         bool add_content( const char* content );
         bool add_status_line( int status, const char* title );
         bool add_headers( int content_length );
+        bool add_cookie();
         bool add_content_length( int content_length );
         bool add_linger();
         bool add_blank_line();
@@ -134,9 +136,15 @@ class http_conn{
         //已经写入的字节
         int bytes_have_send;
         
-        char user_name[20];
+        char user_name[ 30 ];
 
-        char user_password[20];
+        char user_password[ 30 ];
+
+        char *m_cookie;
+
+        int m_flag;
+
+        redis_pool *m_redis_pool;
 };
 #endif
 

@@ -40,6 +40,12 @@ int main( int argc, char *argv[] ){
     }catch(...){
         return 1;
     }
+    redis_pool *cookie_pool = NULL;
+    try{
+        cookie_pool = new redis_pool( 20 );
+    }catch(...){
+        return 1;
+    }
     http_conn *users = new http_conn[ MAX_FD ];
     assert( users );
     int listenfd = socket( PF_INET, SOCK_STREAM, 0 );
@@ -91,7 +97,7 @@ int main( int argc, char *argv[] ){
                 char client_ip[ INET_ADDRSTRLEN ];
                 //inet_ntop( AF_INET, &client_address.sin_addr, &client_ip, INET_ADDRSTRLEN );
                 //printf( "client ip:%s port:%d\n", client_ip, ntohs(client_address.sin_port));
-                users[ connfd ].init( connfd, client_address, sql_pool );
+                users[ connfd ].init( connfd, client_address, sql_pool, cookie_pool );
                 //printf( "client ip:%s port:%d\n", client_address.sin_addr, client_address.sin_port );
             }else if( events[ i ].events & ( EPOLLRDHUP | EPOLLHUP | EPOLLERR ) ){
                 if( events[ i ].events & EPOLLERR ){
@@ -127,5 +133,6 @@ int main( int argc, char *argv[] ){
     delete pool;
     sql_pool->destory_pool();
     delete sql_pool;
+    delete cookie_pool;
     return 0;
 }

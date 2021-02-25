@@ -61,16 +61,17 @@ void http_conn::close_conn(bool real_close)
         printf("close %d\n", m_sockfd);
         removefd(m_epollfd, m_sockfd);
         m_sockfd = -1;
-        m_user_count--;
+        m_user_count--; 
         printf( "close %d\n there are %d users\n", m_sockfd, m_user_count );
     }
 }
 
 //初始化连接,外部调用初始化套接字地址
-void http_conn::init(int sockfd, const sockaddr_in &addr, mysql_pool *sql_pool)
+void http_conn::init(int sockfd, const sockaddr_in &addr, mysql_pool *sql_pool, redis_pool *cookie_pool)
 {
     m_sockfd = sockfd;
     m_address = addr;
+    m_redis_pool = cookie_pool;
     connect_pool = sql_pool;
     int reuse = 1;
     setsockopt( m_sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof( reuse ) );
@@ -96,6 +97,8 @@ void http_conn::init()
     m_read_idx = 0;
     m_write_idx = 0;
     m_file_idx = 0;
+    m_cookie = NULL;
+    m_flag = 0;
 
     memset(m_read_buf, '\0', READ_BUFFER_SIZE);
     memset(m_write_buf, '\0', WRITE_BUFFER_SIZE);
@@ -253,8 +256,12 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text)
         text += strspn(text, " \t");
         m_host = text;
     }
-    else
-    {
+    else if( strncasecmp( text, "Cookie:", 7 ) == 0 ){
+        text += 7;
+        text += strspn( text, "\t" );
+        m_cookie = text;
+    }
+    else{
         //printf("oop!unknow header: %s\n", text);
     }
     return NO_REQUEST;
@@ -267,6 +274,7 @@ http_conn::HTTP_CODE http_conn::parse_content(char *text)
     {
         //puts( text );
         int i;
+
         for( i = 5;; ++i){
             if( text[ i ] == '&' ){
                 user_name[ i ] = '\0';
@@ -297,6 +305,7 @@ http_conn::HTTP_CODE http_conn::process_read()
     while ((m_check_state == CHECK_STATE_CONTENT && line_status == LINE_OK) || ((line_status = parse_line()) == LINE_OK))
     {
         text = get_line();
+        //puts(text);
         m_start_line = m_checked_idx;
         switch (m_check_state)
         {
@@ -348,6 +357,7 @@ http_conn::HTTP_CODE http_conn::do_request()
         return FILE_REQUEST;
     }
     if( m_method == POST ){
+        m_flag = 1;
         MYSQL *con = connect_pool->get_connection();
         switch( m_url[ 1 ] ){
             case '1':
@@ -367,6 +377,7 @@ http_conn::HTTP_CODE http_conn::do_request()
                         if( row == NULL || strcmp( user_password, std::string( row[ 0 ] ).c_str() ) != 0 ){
                             strcpy( m_url, "/enter_error.html" );
                         }else{
+                            m_flag = 2;
                             strcpy( m_url, "/" );
                         }
                     }
@@ -403,6 +414,24 @@ http_conn::HTTP_CODE http_conn::do_request()
                 }
         }
         connect_pool->release_connection( con );
+    }
+    if( m_flag == 0 && m_cookie == NULL ){
+        strcpy( m_url, "/init.html" );
+    }
+    if( m_cookie != NULL && m_flag == 0 ){
+        redisContext *c = m_redis_pool->get_connection();
+        char tmp[100];
+        int tmp_idx = 0;
+        if( !add_response( tmp, tmp_idx, "EXISTS %s", m_cookie  ) ){
+            strcpy( m_url, "/init.html" );
+        }else{
+            redisReply *r = ( redisReply* )redisCommand( c, tmp );
+            if( !(r->integer) ){
+                strcpy( m_url, "/init.html" );
+            }
+            freeReplyObject( r );
+        }
+        m_redis_pool->free_connection( c );
     }
     strcpy(m_real_file, doc_root);
     int len = strlen(doc_root);
@@ -445,7 +474,6 @@ bool http_conn::write()
     while (1)
     {
         temp = writev(m_sockfd, m_iv, m_iv_count);
-        printf( "temp: %d\n", temp );
         if (temp < 0)
         {
             if (errno == EAGAIN)
@@ -498,31 +526,58 @@ bool http_conn::add_response(char *buffer,int &idx,const char *format, ...)
 
     return true;
 }
+
 bool http_conn::add_status_line(int status, const char *title)
 {
     return add_response(m_write_buf, m_write_idx, "%s %d %s\r\n", "HTTP/1.1", status, title);
 }
+
 bool http_conn::add_headers(int content_len)
 {
+    if( m_flag == 2 ){
+        return add_content_length(content_len) && add_linger() &&add_cookie()&&
+                add_blank_line();
+    }
     return add_content_length(content_len) && add_linger() &&
-           add_blank_line();
+                add_blank_line();
 }
+
 bool http_conn::add_content_length(int content_len)
 {
     return add_response(m_write_buf, m_write_idx, "Content-Length:%d\r\n", content_len);
 }
+
 bool http_conn::add_linger()
 {
     return add_response(m_write_buf, m_write_idx, "Connection:%s\r\n", (m_linger == true) ? "keep-alive" : "close");
 }
+
 bool http_conn::add_blank_line()
 {
     return add_response(m_write_buf, m_write_idx, "%s", "\r\n");
 }
+
 bool http_conn::add_content(const char *content)
 {
     return add_response(m_write_buf, m_write_idx, "%s", content);
 }
+
+bool http_conn::add_cookie(){
+    //puts( "set-cookie" );
+    redisContext *c = m_redis_pool->get_connection();
+    char tmp[100];
+    int tmp_idx = 0;
+    add_response( tmp, tmp_idx, "set user_name=%s 1", user_name );
+    //puts( tmp );
+    redisCommand( c, tmp );
+    tmp_idx = 0;
+    add_response( tmp, tmp_idx, "EXPIRE user_name=%s 600", user_name );
+    //puts( tmp );
+    redisCommand( c, tmp );
+    m_redis_pool->free_connection( c );
+    return add_response(m_write_buf, m_write_idx, "Set-Cookie: user_name=%s\r\n",user_name);
+}
+
 bool http_conn::add_dir( char *path ){
     //puts( path );
     DIR *dir_ptr;
@@ -582,7 +637,7 @@ bool http_conn::process_write(HTTP_CODE ret)
             m_iv[1].iov_base = m_file_address;
             m_iv[1].iov_len = m_file_stat.st_size;
             bytes_to_send = m_write_idx + m_file_stat.st_size;
-            printf( "m_write_idx:%d m_file_size:%d\n", m_write_idx, m_file_stat.st_size );
+            //printf( "m_write_idx:%d m_file_size:%d\n", m_write_idx, m_file_stat.st_size );
             m_iv_count = 2;
             return true;
         }
@@ -630,8 +685,9 @@ void http_conn::process()
         //modfd(m_epollfd, m_sockfd, EPOLLIN);
         return;
     }
-    puts( m_real_file );
+    //puts( m_real_file );
     bool write_ret = process_write(read_ret);
+    puts( m_write_buf );
     if (!write_ret)
     {
         close_conn();
