@@ -1,10 +1,18 @@
 CC = g++
-CPPFLAG = -Wall -g -std=c++11
-TARGET = $(patsubst %.cpp, %, $(wildcard *.cpp))
-HEADER = $(wildcard headers/*.h)
-% : %.cpp $(HEADER)
-	$(CC) $(CPPFLAG) $< -o $@
-.PHONY : all clean
-all : $(TARGET)
+CPPFLAG = -lmysqlclient -pthread -lhiredis -g -std=c++11 -Wall
+
+
+server: redis.o mysql.o http_conn.o main.cpp *.h
+	$(CC) $(CPPFLAG) redis.o mysql.o http_conn.o main.cpp -o server && make clean
+
+http_conn.o: redis.o mysql.o http_conn.cpp
+	$(CC) $(CPPFLAG) -c redis.o mysql.o http_conn.cpp
+
+mysql.o: mysql.cpp
+	$(CC) $(CPPFLAG) -c mysql.cpp
+
+redis.o: redis.cpp
+	$(CC) $(CPPFLAG) -c redis.cpp
+
 clean : 
-	rm -f *.out
+	rm -f *.o
